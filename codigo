@@ -1,0 +1,120 @@
+!pip install ultralytics fiftyone -q
+import fiftyone as fo
+import fiftyone.zoo as foz
+import os
+
+classes_escolhidas = ["person", "cat"]
+
+dataset_dir = "/content/coco_dataset"
+
+print("Baixando o dataset de treino...")
+train_dataset = foz.load_zoo_dataset(
+    "coco-2017",
+    split="train",
+    label_types=["detections"],
+    classes=classes_escolhidas,
+    max_samples=1500,
+    dataset_dir=dataset_dir
+)
+
+print("\nBaixando o dataset de validação...")
+val_dataset = foz.load_zoo_dataset(
+    "coco-2017",
+    split="validation",
+    label_types=["detections"],
+    classes=classes_escolhidas,
+    max_samples=400,
+    dataset_dir=dataset_dir
+)
+
+print("\nDownload concluído!")
+
+yolo_data_dir = "/content/yolo_data"
+
+print("Exportando dados de treino...")
+train_dataset.export(
+    export_dir=yolo_data_dir,
+    dataset_type=fo.types.YOLOv5Dataset,
+    label_field="ground_truth",
+    split="train",
+    classes=classes_escolhidas,
+)
+
+print("Exportando dados de validação...")
+val_dataset.export(
+    export_dir=yolo_data_dir,
+    dataset_type=fo.types.YOLOv5Dataset,
+    label_field="ground_truth",
+    split="val",
+    classes=classes_escolhidas,
+)
+
+print("\nExportação concluída!")
+
+import yaml
+
+config_dict = {
+    'path': yolo_data_dir,
+    'train': 'images/train',
+    'val': 'images/val',
+    'names': {
+        0: 'person',
+        1: 'cat'
+
+}
+
+config_path = os.path.join(yolo_data_dir, 'dataset.yaml')
+
+with open(config_path, 'w') as f:
+    yaml.dump(config_dict, f, default_flow_style=False)
+
+print(f"Arquivo de configuração '{config_path}' criado com sucesso!")
+print("\nConteúdo do arquivo:")
+!cat {config_path}
+
+from ultralytics import YOLO
+
+model = YOLO('yolov8n.pt')
+
+results = model.train(
+    data=config_path,
+    epochs=25,
+    imgsz=640,
+    patience=5,
+    batch=16,
+    project='yolo_training',
+    name='baby_cat_detector'
+)
+
+print("\nTreinamento concluído!")
+
+best_model_path = '/content/yolo_training/baby_cat_detector/weights/best.pt'
+print(f"O melhor modelo foi salvo em: {best_model_path}")
+
+from IPython.display import Image
+Image(filename='/content/yolo_training/baby_cat_detector/results.png')
+
+from ultralytics import YOLO
+import requests
+from PIL import Image as PILImage
+import io
+
+model = YOLO(best_model_path)
+
+test_image_url = 'https://i.dailymail.co.uk/i/pix/2016/08/02/11/36CE424400000578-3719039-image-a-20_1470133221971.jpg'
+
+response = requests.get(test_image_url)
+img = PILImage.open(io.BytesIO(response.content))
+
+results = model(img)
+
+res_plotted = results[0].plot()
+
+from google.colab.patches import cv2_imshow
+import cv2
+import numpy as np
+
+cv2_imshow(res_plotted)
+
+cv2.imwrite('detection_result.jpg', res_plotted)
+print("Imagem com detecções salva como 'detection_result.jpg'")
